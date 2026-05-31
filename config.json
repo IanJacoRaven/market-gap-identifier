@@ -1,0 +1,61 @@
+{
+  "news_lookback_days": 4,
+  "price_range": "3mo",
+  "http_timeout_seconds": 20,
+  "commodities": {
+    "HG=F": "Copper",
+    "ALI=F": "Aluminium",
+    "HRC=F": "Steel (HRC)",
+    "PL=F": "Platinum",
+    "PA=F": "Palladium",
+    "CL=F": "Crude oil (WTI)",
+    "NG=F": "Natural gas",
+    "ZW=F": "Wheat",
+    "ZC=F": "Corn",
+    "ZS=F": "Soybeans",
+    "LBR=F": "Lumber",
+    "CT=F": "Cotton",
+    "KC=F": "Coffee",
+    "SB=F": "Sugar",
+    "GC=F": "Gold"
+  },
+  "sectors": [
+    {
+      "sector": "Industrial metals & fabrication",
+      "commodities": ["HG=F", "ALI=F", "HRC=F"],
+      "news_query": "\"steel shortage\" OR \"aluminium shortage\" OR \"copper supply disruption\" OR \"metal supply shortage\""
+    },
+    {
+      "sector": "Energy & fuels",
+      "commodities": ["CL=F", "NG=F"],
+      "news_query": "\"diesel shortage\" OR \"fuel shortage\" OR \"natural gas supply disruption\" OR \"energy supply crunch\""
+    },
+    {
+      "sector": "Electronics & semiconductors",
+      "commodities": ["PL=F", "PA=F"],
+      "news_query": "\"chip shortage\" OR \"semiconductor shortage\" OR \"component shortage\" OR \"PCB lead time\""
+    },
+    {
+      "sector": "Food & agriculture",
+      "commodities": ["ZW=F", "ZC=F", "ZS=F", "KC=F", "SB=F"],
+      "news_query": "\"food shortage\" OR \"grain export ban\" OR \"crop failure\" OR \"fertiliser shortage\""
+    },
+    {
+      "sector": "Construction & building materials",
+      "commodities": ["LBR=F", "HRC=F"],
+      "news_query": "\"lumber shortage\" OR \"cement shortage\" OR \"building material shortage\" OR \"construction supply\""
+    },
+    {
+      "sector": "Textiles & apparel",
+      "commodities": ["CT=F"],
+      "news_query": "\"cotton shortage\" OR \"textile supply disruption\" OR \"garment factory shutdown\""
+    }
+  ],
+  "scoring": {
+    "w_price": 0.40,
+    "w_news": 0.40,
+    "w_watchlist": 0.20,
+    "spike_pct_strong": 8.0,
+    "news_count_saturate": 8
+  }
+}

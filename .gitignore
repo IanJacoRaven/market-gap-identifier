@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Your private watchlist (keep the example, not the real one)
+data/watchlist.csv
+
+# OS
+Thumbs.db
+.DS_Store

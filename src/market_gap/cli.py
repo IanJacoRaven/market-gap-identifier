@@ -1,0 +1,101 @@
+"""Orchestrate the daily scan: gather signals -> score -> write report."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+from . import __version__
+from .report import render
+from .scoring import rank_sectors, score_sector
+from .sources import commodities, news
+from .sources.user_data import load_watchlist
+
+# Project root = three levels up from this file (src/market_gap/cli.py).
+ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_CONFIG = ROOT / "config.json"
+DEFAULT_WATCHLIST = ROOT / "data" / "watchlist.csv"
+DEFAULT_REPORT_DIR = ROOT / "reports"
+
+
+def load_config(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def run(config_path: Path, watchlist_path: Path, report_dir: Path) -> Path:
+    cfg = load_config(config_path)
+    run_dt = datetime.now(timezone.utc).astimezone()
+
+    timeout = int(cfg.get("http_timeout_seconds", 20))
+    price_range = cfg.get("price_range", "3mo")
+    lookback = int(cfg.get("news_lookback_days", 4))
+
+    # 1. Prices (fetch the full basket once, then map to sectors).
+    print("Fetching commodity prices ...")
+    price_map = commodities.fetch_all(cfg["commodities"], price_range, timeout)
+
+    # 2. Watchlist (user's own data).
+    watchlist = load_watchlist(watchlist_path)
+    if watchlist:
+        print(f"Loaded {len(watchlist)} watchlist term(s) from {watchlist_path}")
+
+    # 3. Per-sector news + scoring.
+    scores = []
+    for sector_cfg in cfg["sectors"]:
+        name = sector_cfg["sector"]
+        print(f"Scanning sector: {name} ...")
+        sector_prices = [price_map[s] for s in sector_cfg.get("commodities", []) if s in price_map]
+        news_signal = news.fetch_news_signal(sector_cfg["news_query"], lookback, timeout)
+        scores.append(
+            score_sector(name, sector_prices, news_signal, watchlist, cfg.get("scoring", {}))
+        )
+
+    ranked = rank_sectors(scores)
+
+    # 4. Source status summary.
+    n_prices_ok = sum(1 for s in price_map.values() if s.available)
+    n_news_ok = sum(1 for sc in scores if sc.news and sc.news.available)
+    status = [
+        f"Commodity prices (Yahoo Finance): {n_prices_ok}/{len(price_map)} symbols OK",
+        f"Disruption news (Google News RSS): {n_news_ok}/{len(scores)} sector queries OK",
+        f"Watchlist (data/watchlist.csv): {'loaded' if watchlist else 'not found — public signals only'}",
+        f"Tool version: market-gap-identifier {__version__}",
+    ]
+
+    # 5. Render + write.
+    md = render(ranked, run_dt, status, len(watchlist))
+    report_dir.mkdir(parents=True, exist_ok=True)
+    out_path = report_dir / f"{run_dt.strftime('%Y-%m-%d')}.md"
+    out_path.write_text(md, encoding="utf-8")
+    print(f"\nReport written: {out_path}")
+    _print_summary(ranked)
+    return out_path
+
+
+def _print_summary(ranked) -> None:
+    print("\nTop gap candidates today:")
+    for i, s in enumerate(ranked[:5], 1):
+        print(f"  {i}. {s.sector:40s} {s.score:5.1f}  ({s.rationale})")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="market-gap", description="Daily scan for supply/demand market gaps (free data, no keys)."
+    )
+    parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--watchlist", type=Path, default=DEFAULT_WATCHLIST)
+    parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
+    args = parser.parse_args(argv)
+    try:
+        run(args.config, args.watchlist, args.report_dir)
+    except FileNotFoundError as e:
+        print(f"ERROR: {e}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
