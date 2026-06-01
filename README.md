@@ -18,6 +18,25 @@ working on a bare install and never breaks on an expired credential.
 
 Each sector gets a **0–100 gap score** = `40% price momentum + 40% disruption news + 20% watchlist match`. Higher = stronger evidence worth a human look.
 
+## Local AI analyst (token-free)
+
+After the mechanical scan, an optional **local LLM analyst** reads the scored
+report and writes a decision-first brief (top gaps, REAL GAP / WATCH / NOISE
+verdicts, the specific opportunity, risks). It runs entirely on your machine via
+[Ollama](https://ollama.com) — **no tokens, no cloud, no API keys.**
+
+- Default model: `qwen2.5:14b` (configurable in `config.json` → `local_llm`).
+- One-time setup: `ollama pull qwen2.5:14b` (server: `ollama serve`).
+- The brief is appended to the same `reports/YYYY-MM-DD.md`.
+- If Ollama or the model isn't available, the scan still produces its mechanical
+  report and notes that the analyst was skipped — it never crashes.
+
+Toggle it with `--analyst` / `--no-analyst`, or `local_llm.enabled` in config.
+
+> Note: unlike a cloud model, a local model can't browse the web. It reasons over
+> the **real** price moves and news headlines the scan already collected (which
+> work fine locally), not open-web research.
+
 ## Run it
 
 ```powershell
@@ -58,15 +77,38 @@ Edit [`config.json`](config.json):
 
 ## Run it automatically every day (Windows Task Scheduler)
 
+This is already set up on this machine as task **`MarketGapScan-Local`** (weekdays
+07:00), which runs [`run_local.ps1`](run_local.ps1) — it ensures the Ollama server
+is up, runs the scan + local analyst, and logs to `logs/`.
+
+To (re)create or inspect it:
+
 ```powershell
-$action  = New-ScheduledTaskAction -Execute "python" `
-  -Argument "run_daily.py" `
-  -WorkingDirectory "C:\Users\ianja\Documents\Rav Engineering\Market gap identifier"
-$trigger = New-ScheduledTaskTrigger -Daily -At 7am
-Register-ScheduledTask -TaskName "MarketGapScan" -Action $action -Trigger $trigger
+# Inspect
+Get-ScheduledTask -TaskName "MarketGapScan-Local"
+Get-ScheduledTaskInfo -TaskName "MarketGapScan-Local"   # next run time
+
+# Run it right now to test
+Start-ScheduledTask -TaskName "MarketGapScan-Local"
+
+# Recreate
+$proj = "C:\Users\ianja\Documents\Rav Engineering\Market gap identifier"
+$action  = New-ScheduledTaskAction -Execute "powershell.exe" `
+  -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$proj\run_local.ps1`"" -WorkingDirectory $proj
+$trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday,Tuesday,Wednesday,Thursday,Friday -At 7:00am
+Register-ScheduledTask -TaskName "MarketGapScan-Local" -Action $action -Trigger $trigger -Force
 ```
 
-Each morning a fresh `reports/<date>.md` appears.
+Each weekday morning a fresh `reports/<date>.md` appears, ending with the local
+analyst brief.
+
+### Cloud routine (disabled)
+
+There is also a cloud routine (`trig_01L7DhSWD8uWAckGbSHmAVqV`) that ran the
+analyst on Claude Sonnet and delivered to Google Drive. It is **disabled** to
+avoid token costs now that the local analyst exists. Re-enable at
+[claude.ai/code/routines](https://claude.ai/code/routines) if you ever want the
+higher-quality cloud analysis (with live web research) as a fallback.
 
 ## Project layout
 

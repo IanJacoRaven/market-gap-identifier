@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__
+from . import __version__, local_llm
 from .report import render
 from .scoring import rank_sectors, score_sector
 from .sources import commodities, news
@@ -25,7 +25,13 @@ def load_config(path: Path) -> dict:
         return json.load(f)
 
 
-def run(config_path: Path, watchlist_path: Path, report_dir: Path) -> Path:
+def run(
+    config_path: Path,
+    watchlist_path: Path,
+    report_dir: Path,
+    analyst: bool | None = None,
+    model: str | None = None,
+) -> Path:
     cfg = load_config(config_path)
     run_dt = datetime.now(timezone.utc).astimezone()
 
@@ -72,7 +78,48 @@ def run(config_path: Path, watchlist_path: Path, report_dir: Path) -> Path:
     out_path.write_text(md, encoding="utf-8")
     print(f"\nReport written: {out_path}")
     _print_summary(ranked)
+
+    # 6. Local LLM analyst layer (token-free, runs on this machine via Ollama).
+    llm_cfg = cfg.get("local_llm", {})
+    use_analyst = llm_cfg.get("enabled", False) if analyst is None else analyst
+    if use_analyst:
+        _run_analyst(out_path, md, run_dt.strftime("%Y-%m-%d"), llm_cfg, model)
+
     return out_path
+
+
+def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict, model_override: str | None) -> None:
+    model = model_override or llm_cfg.get("model", "qwen2.5:14b")
+    host = llm_cfg.get("host", "http://localhost:11434")
+    print(f"\nRunning local analyst ({model}) — this may take a few minutes ...")
+
+    ready, msg = local_llm.check_available(model, host)
+    if not ready:
+        print(f"  Local analyst skipped: {msg}")
+        _append(out_path, f"\n---\n\n## Analyst brief — {date_str}\n\n_Local model unavailable: {msg}_\n")
+        return
+
+    result = local_llm.generate_brief(
+        report_md,
+        date_str,
+        model=model,
+        host=host,
+        temperature=float(llm_cfg.get("temperature", 0.3)),
+        num_ctx=int(llm_cfg.get("num_ctx", 8192)),
+        timeout=int(llm_cfg.get("timeout_seconds", 600)),
+    )
+    if not result.ok:
+        print(f"  Local analyst failed: {result.error}")
+        _append(out_path, f"\n---\n\n## Analyst brief — {date_str}\n\n_Local analyst failed: {result.error}_\n")
+        return
+
+    _append(out_path, f"\n---\n\n_Analyst brief generated locally by {result.model} (no tokens used)._\n\n{result.text}\n")
+    print(f"  Analyst brief appended to {out_path}")
+
+
+def _append(path: Path, text: str) -> None:
+    with path.open("a", encoding="utf-8") as f:
+        f.write(text)
 
 
 def _print_summary(ranked) -> None:
@@ -88,9 +135,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--watchlist", type=Path, default=DEFAULT_WATCHLIST)
     parser.add_argument("--report-dir", type=Path, default=DEFAULT_REPORT_DIR)
+    parser.add_argument("--model", default=None, help="Override the local Ollama model tag.")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--analyst", dest="analyst", action="store_true", default=None,
+                       help="Force-run the local LLM analyst layer.")
+    group.add_argument("--no-analyst", dest="analyst", action="store_false",
+                       help="Skip the local LLM analyst layer (mechanical scan only).")
     args = parser.parse_args(argv)
     try:
-        run(args.config, args.watchlist, args.report_dir)
+        run(args.config, args.watchlist, args.report_dir, analyst=args.analyst, model=args.model)
     except FileNotFoundError as e:
         print(f"ERROR: {e}")
         return 1

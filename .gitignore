@@ -8,6 +8,9 @@ venv/
 # Your private watchlist (keep the example, not the real one)
 data/watchlist.csv
 
+# Run logs
+logs/
+
 # OS
 Thumbs.db
 .DS_Store

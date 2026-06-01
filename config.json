@@ -57,5 +57,13 @@
     "w_watchlist": 0.20,
     "spike_pct_strong": 8.0,
     "news_count_saturate": 8
+  },
+  "local_llm": {
+    "enabled": true,
+    "model": "qwen2.5:14b",
+    "host": "http://localhost:11434",
+    "temperature": 0.3,
+    "num_ctx": 8192,
+    "timeout_seconds": 600
   }
 }
