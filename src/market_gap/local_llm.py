@@ -34,7 +34,7 @@ USER_TEMPLATE = """Here is today's mechanical market-gap scan (real data collect
 <scan>
 {report}
 </scan>
-
+{web_block}
 Write a tight analyst brief in Markdown with this exact structure:
 
 ## Analyst brief — {date}
@@ -49,7 +49,7 @@ For each of the 3 highest-signal sectors (use the ranked scores and the headline
   - Key risks: 1-2 bullets.
   - Evidence: cite the specific headlines or price figures FROM THE SCAN ABOVE that support your verdict.
 
-Do not pad. Do not fabricate sources or statistics beyond what the scan provides."""
+Do not pad. Do not fabricate sources or statistics beyond what the scan AND the web results below provide. When you cite a fact or figure, it must come from the scan or the web search results; prefer linking the web result URLs as your sources."""
 
 
 @dataclass
@@ -68,13 +68,25 @@ def generate_brief(
     temperature: float = 0.3,
     num_ctx: int = 8192,
     timeout: int = 600,
+    web_context: str = "",
 ) -> LocalLLMResult:
     """Call a local Ollama model to turn the mechanical scan into an analyst brief."""
+    web_block = (
+        f"\nRecent web search results (free DuckDuckGo search, current as of today):\n\n"
+        f"<web_results>\n{web_context}\n</web_results>\n"
+        if web_context.strip()
+        else ""
+    )
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": USER_TEMPLATE.format(report=report_md, date=date_str)},
+            {
+                "role": "user",
+                "content": USER_TEMPLATE.format(
+                    report=report_md, date=date_str, web_block=web_block
+                ),
+            },
         ],
         "stream": False,
         "options": {"temperature": temperature, "num_ctx": num_ctx},

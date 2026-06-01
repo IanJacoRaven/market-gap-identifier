@@ -10,7 +10,7 @@ from pathlib import Path
 from . import __version__, local_llm
 from .report import render
 from .scoring import rank_sectors, score_sector
-from .sources import commodities, news
+from .sources import commodities, news, websearch
 from .sources.user_data import load_watchlist
 
 # Project root = three levels up from this file (src/market_gap/cli.py).
@@ -83,14 +83,33 @@ def run(
     llm_cfg = cfg.get("local_llm", {})
     use_analyst = llm_cfg.get("enabled", False) if analyst is None else analyst
     if use_analyst:
-        _run_analyst(out_path, md, run_dt.strftime("%Y-%m-%d"), llm_cfg, model)
+        _run_analyst(out_path, md, run_dt.strftime("%Y-%m-%d"), llm_cfg, model, ranked, cfg)
 
     return out_path
 
 
-def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict, model_override: str | None) -> None:
+def _gather_web_context(ranked, cfg: dict, timeout: int) -> str:
+    """Run free web searches for the top-ranked sectors to widen the analyst's context."""
+    ws_cfg = cfg.get("web_search", {})
+    if not ws_cfg.get("enabled", False):
+        return ""
+    top_n = int(ws_cfg.get("top_sectors", 3))
+    max_results = int(ws_cfg.get("max_results_per_query", 5))
+    suffix = ws_cfg.get("query_suffix", "shortage supply disruption")
+    queries = [f"{s.sector} {suffix}".strip() for s in ranked[:top_n]]
+    print(f"Gathering web context for top {len(queries)} sectors (free DuckDuckGo search) ...")
+    return websearch.gather_context(queries, max_results, timeout)
+
+
+def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict,
+                 model_override: str | None, ranked=None, cfg: dict | None = None) -> None:
     model = model_override or llm_cfg.get("model", "qwen2.5:14b")
     host = llm_cfg.get("host", "http://localhost:11434")
+
+    web_context = ""
+    if ranked is not None and cfg is not None:
+        web_context = _gather_web_context(ranked, cfg, int(cfg.get("http_timeout_seconds", 20)))
+
     print(f"\nRunning local analyst ({model}) — this may take a few minutes ...")
 
     ready, msg = local_llm.check_available(model, host)
@@ -107,6 +126,7 @@ def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict, m
         temperature=float(llm_cfg.get("temperature", 0.3)),
         num_ctx=int(llm_cfg.get("num_ctx", 8192)),
         timeout=int(llm_cfg.get("timeout_seconds", 600)),
+        web_context=web_context,
     )
     if not result.ok:
         print(f"  Local analyst failed: {result.error}")

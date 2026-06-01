@@ -33,9 +33,22 @@ verdicts, the specific opportunity, risks). It runs entirely on your machine via
 
 Toggle it with `--analyst` / `--no-analyst`, or `local_llm.enabled` in config.
 
-> Note: unlike a cloud model, a local model can't browse the web. It reasons over
-> the **real** price moves and news headlines the scan already collected (which
-> work fine locally), not open-web research.
+### How the local model gets current information
+
+A local model is just a reasoning engine with a fixed knowledge cutoff — it can't
+browse on its own. Fresh information reaches it through its **prompt**, which this
+pipeline fills each run with:
+
+1. **Real-time price + news signals** the scan already collects (Yahoo Finance,
+   Google News RSS).
+2. **Free web search** (`web_search` in config): for the top-ranked sectors we
+   query DuckDuckGo and feed the result snippets into the prompt — the local,
+   token-free stand-in for cloud web research. If DuckDuckGo rate-limits, it
+   automatically falls back to Google News RSS, so the analyst always gets
+   widened context. Tune `top_sectors`, `max_results_per_query`, `query_suffix`.
+
+So the model has a "stale brain, fresh eyes": frozen weights for reasoning, but
+current data handed to it every run. No tokens used — only your bandwidth.
 
 ## Run it
 
