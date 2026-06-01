@@ -69,14 +69,17 @@ def generate_brief(
     num_ctx: int = 8192,
     timeout: int = 600,
     web_context: str = "",
+    focus_note: str = "",
 ) -> LocalLLMResult:
     """Call a local Ollama model to turn the mechanical scan into an analyst brief."""
     web_block = (
-        f"\nRecent web search results (free DuckDuckGo search, current as of today):\n\n"
+        f"\nRecent web search results (free DuckDuckGo / news search, current as of today):\n\n"
         f"<web_results>\n{web_context}\n</web_results>\n"
         if web_context.strip()
         else ""
     )
+    if focus_note.strip():
+        web_block += f"\n{focus_note}\n"
     payload = {
         "model": model,
         "messages": [

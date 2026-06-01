@@ -50,6 +50,35 @@ pipeline fills each run with:
 So the model has a "stale brain, fresh eyes": frozen weights for reasoning, but
 current data handed to it every run. No tokens used — only your bandwidth.
 
+## Focus the scan (geographies, sources, sectors)
+
+The `focus` block in `config.json` steers **where** the scan looks. It's additive —
+leave it empty for the original global behaviour.
+
+```jsonc
+"focus": {
+  "mode": "augment",                       // augment = global + focus; (restrict reserved)
+  "geographies": ["South Africa", "Europe"],
+  "priority_sectors": [],                  // e.g. ["Electronics & semiconductors"]
+  "priority_sector_boost": 8,              // score bump for priority sectors
+  "preferred_sources": ["reuters.com", "spglobal.com", "..."],
+  "custom_rss": [],                        // your own feeds, pulled into context
+  "extra_queries": [],                     // verbatim searches run every day
+  "max_web_searches": 8                    // politeness cap on search volume
+}
+```
+
+| Lever | What it does |
+|-------|--------------|
+| **`geographies`** | Adds a geo-targeted search per top sector (`…South Africa OR Europe`) and tells the analyst to weight regionally-accessible opportunities higher (still flags big global gaps). |
+| **`preferred_sources`** | The analyst prefers and cites these domains. Seeded with sensible defaults — edit freely. |
+| **`priority_sectors`** | Any sector listed here gets `priority_sector_boost` added to its score and a "priority sector" tag — force-focus a sector. |
+| **`custom_rss`** | **Your "places to look."** Any RSS/Atom feed URL; its latest items are pulled straight into the analyst's context each run. |
+| **`extra_queries`** | Free-form searches run verbatim daily, e.g. `"Transnet port congestion"`, `"rand import costs"`. |
+
+Geo searches use DuckDuckGo with automatic Google News fallback, so regional
+context comes through even if search is rate-limited.
+
 ## Run it
 
 ```powershell

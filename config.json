@@ -71,5 +71,25 @@
     "top_sectors": 3,
     "max_results_per_query": 5,
     "query_suffix": "shortage supply disruption 2026"
+  },
+  "focus": {
+    "_comment": "Steer WHERE the scan looks. Edit freely. Geographies are added to searches and weighted by the analyst; preferred_sources are cited preferentially; priority_sectors get a score boost; custom_rss feeds and extra_queries are pulled verbatim into the analyst's context.",
+    "mode": "augment",
+    "geographies": ["South Africa", "Europe"],
+    "priority_sectors": [],
+    "priority_sector_boost": 8,
+    "preferred_sources": [
+      "reuters.com",
+      "spglobal.com",
+      "tradingeconomics.com",
+      "mining.com",
+      "miningweekly.com",
+      "supplychaindive.com",
+      "ft.com",
+      "bloomberg.com"
+    ],
+    "custom_rss": [],
+    "extra_queries": [],
+    "max_web_searches": 8
   }
 }

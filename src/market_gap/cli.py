@@ -7,7 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, local_llm
+from . import __version__, focus as focus_mod, local_llm
 from .report import render
 from .scoring import rank_sectors, score_sector
 from .sources import commodities, news, websearch
@@ -59,6 +59,9 @@ def run(
             score_sector(name, sector_prices, news_signal, watchlist, cfg.get("scoring", {}))
         )
 
+    # Apply the focus layer's priority-sector boost before ranking.
+    focus = focus_mod.FocusConfig.from_dict(cfg.get("focus"))
+    focus_mod.apply_priority_boost(scores, focus)
     ranked = rank_sectors(scores)
 
     # 4. Source status summary.
@@ -68,6 +71,8 @@ def run(
         f"Commodity prices (Yahoo Finance): {n_prices_ok}/{len(price_map)} symbols OK",
         f"Disruption news (Google News RSS): {n_news_ok}/{len(scores)} sector queries OK",
         f"Watchlist (data/watchlist.csv): {'loaded' if watchlist else 'not found — public signals only'}",
+        f"Focus: {('geographies ' + ', '.join(focus.geographies)) if focus.geographies else 'global'}"
+        + (f"; priority sectors {', '.join(focus.priority_sectors)}" if focus.priority_sectors else ""),
         f"Tool version: market-gap-identifier {__version__}",
     ]
 
@@ -88,17 +93,29 @@ def run(
     return out_path
 
 
-def _gather_web_context(ranked, cfg: dict, timeout: int) -> str:
-    """Run free web searches for the top-ranked sectors to widen the analyst's context."""
+def _gather_web_context(ranked, cfg: dict, timeout: int, focus) -> str:
+    """Gather widened context: focus-aware web searches + the user's own RSS feeds."""
     ws_cfg = cfg.get("web_search", {})
-    if not ws_cfg.get("enabled", False):
-        return ""
-    top_n = int(ws_cfg.get("top_sectors", 3))
-    max_results = int(ws_cfg.get("max_results_per_query", 5))
-    suffix = ws_cfg.get("query_suffix", "shortage supply disruption")
-    queries = [f"{s.sector} {suffix}".strip() for s in ranked[:top_n]]
-    print(f"Gathering web context for top {len(queries)} sectors (free DuckDuckGo search) ...")
-    return websearch.gather_context(queries, max_results, timeout)
+    parts: list[str] = []
+
+    if ws_cfg.get("enabled", False):
+        top_n = int(ws_cfg.get("top_sectors", 3))
+        max_results = int(ws_cfg.get("max_results_per_query", 5))
+        suffix = ws_cfg.get("query_suffix", "shortage supply disruption")
+        queries = focus_mod.build_search_queries(ranked, focus, suffix, top_n)
+        geo_note = f" (geo: {', '.join(focus.geographies)})" if focus.geographies else ""
+        print(f"Gathering web context — {len(queries)} searches{geo_note} ...")
+        web = websearch.gather_context(queries, max_results, timeout)
+        if web:
+            parts.append(web)
+
+    if focus.custom_rss:
+        print(f"Pulling {len(focus.custom_rss)} custom RSS feed(s) ...")
+        rss = focus_mod.fetch_rss_context(focus.custom_rss, max_items=6, timeout=timeout)
+        if rss:
+            parts.append(rss)
+
+    return "\n\n".join(parts)
 
 
 def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict,
@@ -107,8 +124,11 @@ def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict,
     host = llm_cfg.get("host", "http://localhost:11434")
 
     web_context = ""
+    focus_note = ""
     if ranked is not None and cfg is not None:
-        web_context = _gather_web_context(ranked, cfg, int(cfg.get("http_timeout_seconds", 20)))
+        focus = focus_mod.FocusConfig.from_dict(cfg.get("focus"))
+        focus_note = focus_mod.prompt_note(focus)
+        web_context = _gather_web_context(ranked, cfg, int(cfg.get("http_timeout_seconds", 20)), focus)
 
     print(f"\nRunning local analyst ({model}) — this may take a few minutes ...")
 
@@ -127,6 +147,7 @@ def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict,
         num_ctx=int(llm_cfg.get("num_ctx", 8192)),
         timeout=int(llm_cfg.get("timeout_seconds", 600)),
         web_context=web_context,
+        focus_note=focus_note,
     )
     if not result.ok:
         print(f"  Local analyst failed: {result.error}")
