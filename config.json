@@ -56,8 +56,12 @@
     "w_news": 0.40,
     "w_watchlist": 0.20,
     "spike_pct_strong": 8.0,
-    "news_count_saturate": 8
+    "news_count_saturate": 8,
+    "breakout_z": 2.0,
+    "breakout_bonus": 20.0,
+    "breakout_news_ceiling": 50.0
   },
+  "news_dedupe_jaccard": 0.5,
   "local_llm": {
     "enabled": true,
     "model": "qwen2.5:14b",

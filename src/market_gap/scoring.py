@@ -56,6 +56,21 @@ def _price_component(signals: list[PriceSignal], spike_pct_strong: float) -> flo
     return min(100.0, base + bonus)
 
 
+def _breakout_bonus(signals: list[PriceSignal], news_score: float, cfg: dict) -> float:
+    """Bonus for a strong price breakout that news hasn't picked up yet (early signal)."""
+    z_thresh = float(cfg.get("breakout_z", 2.0))
+    bonus = float(cfg.get("breakout_bonus", 20.0))
+    news_ceiling = float(cfg.get("breakout_news_ceiling", 50.0))
+    # Only reward when news is still quiet — otherwise the sector already ranks on news.
+    if news_score >= news_ceiling:
+        return 0.0
+    strongest = max(
+        (s.zscore for s in signals if s.available and s.zscore is not None),
+        default=0.0,
+    )
+    return bonus if strongest >= z_thresh else 0.0
+
+
 def _news_component(news: NewsSignal | None, saturate: int) -> float:
     """0-100 from count of disruption-flagged headlines, saturating at `saturate`."""
     if news is None or not news.available:
@@ -103,7 +118,12 @@ def score_sector(
 
     composite = w_price * price_score + w_news * news_score + w_watch * watch_score
 
-    rationale = _build_rationale(price_score, news_score, watch_score, news, hits)
+    # Early-breakout reward: a strong, broad price spike that news hasn't caught yet
+    # is exactly the early signal we want — lift it even with little/no news.
+    breakout = _breakout_bonus(price_signals, news_score, scoring_cfg)
+    composite += breakout
+
+    rationale = _build_rationale(price_score, news_score, watch_score, news, hits, breakout > 0)
 
     return SectorScore(
         sector=sector_name,
@@ -119,15 +139,18 @@ def score_sector(
 
 
 def _build_rationale(
-    price: float, news_s: float, watch: float, news: NewsSignal | None, hits: list[WatchItem]
+    price: float, news_s: float, watch: float, news: NewsSignal | None,
+    hits: list[WatchItem], breakout: bool = False
 ) -> str:
     parts: list[str] = []
+    if breakout:
+        parts.append("early price breakout (news hasn't caught up)")
     if price >= 50:
         parts.append("strong upward price pressure on inputs")
     elif price >= 20:
         parts.append("mild input price momentum")
     if news is not None and news.available and news.disruption_count:
-        parts.append(f"{news.disruption_count} recent disruption headline(s)")
+        parts.append(f"{news.disruption_count} distinct disruption headline(s)")
     if watch:
         terms = ", ".join(h.term for h in hits[:3])
         parts.append(f"matches your watchlist ({terms})")

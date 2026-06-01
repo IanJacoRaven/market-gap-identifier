@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -49,12 +50,13 @@ def run(
         print(f"Loaded {len(watchlist)} watchlist term(s) from {watchlist_path}")
 
     # 3. Per-sector news + scoring.
+    dedupe_jaccard = float(cfg.get("news_dedupe_jaccard", 0.5))
     scores = []
     for sector_cfg in cfg["sectors"]:
         name = sector_cfg["sector"]
         print(f"Scanning sector: {name} ...")
         sector_prices = [price_map[s] for s in sector_cfg.get("commodities", []) if s in price_map]
-        news_signal = news.fetch_news_signal(sector_cfg["news_query"], lookback, timeout)
+        news_signal = news.fetch_news_signal(sector_cfg["news_query"], lookback, timeout, dedupe_jaccard)
         scores.append(
             score_sector(name, sector_prices, news_signal, watchlist, cfg.get("scoring", {}))
         )
@@ -170,6 +172,12 @@ def _print_summary(ranked) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Harden console/file output against Unicode (Windows defaults to cp1252).
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+        except Exception:  # noqa: BLE001
+            pass
     parser = argparse.ArgumentParser(
         prog="market-gap", description="Daily scan for supply/demand market gaps (free data, no keys)."
     )

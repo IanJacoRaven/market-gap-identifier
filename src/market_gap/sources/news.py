@@ -7,6 +7,7 @@ flagged — those are the strongest gap signals.
 
 from __future__ import annotations
 
+import re
 import urllib.parse
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -14,6 +15,15 @@ from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 
 from ..http_util import get_text
+
+# Common words ignored when judging whether two headlines describe the same event.
+_STOPWORDS = {
+    "the", "and", "for", "with", "from", "after", "amid", "over", "into", "out",
+    "say", "says", "said", "could", "amid", "this", "that", "than", "then",
+    "will", "have", "has", "are", "was", "were", "its", "their", "his", "her",
+    "new", "more", "most", "update", "updates", "news", "report", "reports",
+    "warns", "warn", "warning", "behind", "ahead", "year", "years", "week",
+}
 
 _RSS_URL = "https://news.google.com/rss/search?q={query}&hl=en-US&gl=US&ceid=US:en"
 
@@ -56,7 +66,37 @@ def _is_disruption(title: str) -> bool:
     return any(term in low for term in DISRUPTION_TERMS)
 
 
-def fetch_news_signal(query: str, lookback_days: int, timeout: int) -> NewsSignal:
+def _significant_words(title: str) -> set[str]:
+    """Meaningful words of a headline (drops the ' - Source' suffix and stopwords)."""
+    head = title.split(" - ")[0].lower()
+    words = re.findall(r"[a-z0-9]+", head)
+    return {w for w in words if len(w) > 3 and w not in _STOPWORDS}
+
+
+def _dedupe(items: list[NewsItem], jaccard: float) -> list[NewsItem]:
+    """Collapse near-identical headlines (same event across outlets) into one each.
+
+    Keeps the first occurrence (items arrive newest-first), so one clustered event
+    counts once rather than inflating a sector's score with many copies.
+    """
+    kept: list[NewsItem] = []
+    sigs: list[set[str]] = []
+    for item in items:
+        sig = _significant_words(item.title)
+        is_dup = False
+        for prev in sigs:
+            if sig and prev:
+                overlap = len(sig & prev) / len(sig | prev)
+                if overlap >= jaccard:
+                    is_dup = True
+                    break
+        if not is_dup:
+            kept.append(item)
+            sigs.append(sig)
+    return kept
+
+
+def fetch_news_signal(query: str, lookback_days: int, timeout: int, dedupe_jaccard: float = 0.5) -> NewsSignal:
     url = _RSS_URL.format(query=urllib.parse.quote(query))
     raw = get_text(url, timeout=timeout)
     if raw is None:
@@ -98,4 +138,5 @@ def fetch_news_signal(query: str, lookback_days: int, timeout: int) -> NewsSigna
         )
 
     items.sort(key=lambda i: i.published or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+    items = _dedupe(items, dedupe_jaccard)
     return NewsSignal(query=query, available=True, items=items)

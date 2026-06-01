@@ -26,7 +26,21 @@ SYSTEM_PROMPT = (
     "headlines. Reason ONLY from that evidence plus well-established background "
     "knowledge — do not invent specific facts, numbers, or sources that are not "
     "supported by the provided data. Prefer 'nothing compelling today' over "
-    "manufacturing an opportunity. Be concise and decision-oriented."
+    "manufacturing an opportunity. Be concise and decision-oriented.\n\n"
+    "Be skeptical of news in two specific ways:\n"
+    "1) CLUSTERED COVERAGE: if several headlines describe the SAME single event "
+    "(e.g. one airport, one factory, one strike), treat it as ONE data point, not "
+    "many — many outlets covering one blip is not a structural shortage.\n"
+    "2) CONTRADICTION: if a headline debunks or downplays a shortage (e.g. "
+    "'government rules out shortage', 'returning to normal'), weight it heavily and "
+    "do NOT rate the sector a REAL GAP without independent, structural support. "
+    "Distinguish a localized/temporary logistics disruption from a genuine, lasting "
+    "supply gap.\n\n"
+    "CITATIONS: Only attach a hyperlink (URL) to a claim if that exact URL appears "
+    "in the data you were given. For price-based claims, cite the figure itself "
+    "(e.g. 'steel HRC +10.5% 5d, z=3.56'), NOT a link. Never reuse an unrelated URL "
+    "and never invent a link. If a claim has no source link, state the evidence as "
+    "plain text — that is correct and expected."
 )
 
 USER_TEMPLATE = """Here is today's mechanical market-gap scan (real data collected locally):
@@ -44,12 +58,12 @@ Write a tight analyst brief in Markdown with this exact structure:
 ### Top gaps
 For each of the 3 highest-signal sectors (use the ranked scores and the headlines/price moves as evidence):
 - **<Sector>** — VERDICT: REAL GAP / WATCH / NOISE
-  - Reasoning: 2-4 sentences. Is the price move a genuine shortage or just cost inflation/demand drop? Are the headlines real and current or noise?
+  - Reasoning: 2-4 sentences. Is the price move a genuine shortage or just cost inflation/demand drop? Are the headlines a real, structural signal — or just one clustered/contradicted event (treat repeated coverage of the same event as ONE point)?
   - Opportunity: the specific material/product/service that is short, who needs it, and how hard it would be for a SMALL operator to step in (say so plainly if it's real but inaccessible).
   - Key risks: 1-2 bullets.
-  - Evidence: cite the specific headlines or price figures FROM THE SCAN ABOVE that support your verdict.
+  - Evidence: list the specific headlines or price figures FROM THE DATA ABOVE that support your verdict. Attach a URL ONLY if that exact URL appears above; for price moves write the figure (e.g. "steel HRC +10.5% 5d, z=3.56") with NO link. Never invent or reuse an unrelated link.
 
-Do not pad. Do not fabricate sources or statistics beyond what the scan AND the web results below provide. When you cite a fact or figure, it must come from the scan or the web search results; prefer linking the web result URLs as your sources."""
+Do not pad. Do not fabricate sources, statistics, or links beyond what the scan and web results provide. A strong score is a lead, not a conclusion — downgrade it if the supporting news is one event or is contradicted."""
 
 
 @dataclass
