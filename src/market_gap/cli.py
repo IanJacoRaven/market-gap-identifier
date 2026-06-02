@@ -8,7 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import __version__, focus as focus_mod, local_llm
+from . import __version__, delivery as delivery_mod, focus as focus_mod, local_llm
 from .report import render
 from .scoring import rank_sectors, score_sector
 from .sources import commodities, news, websearch
@@ -158,6 +158,11 @@ def _run_analyst(out_path: Path, report_md: str, date_str: str, llm_cfg: dict,
 
     _append(out_path, f"\n---\n\n_Analyst brief generated locally by {result.model} (no tokens used)._\n\n{result.text}\n")
     print(f"  Analyst brief appended to {out_path}")
+
+    # Deliver a brief-first copy somewhere visible (OneDrive / Desktop).
+    if cfg is not None:
+        for line in delivery_mod.deliver(result.text, report_md, date_str, cfg.get("delivery", {})):
+            print(f"  {line}")
 
 
 def _append(path: Path, text: str) -> None:

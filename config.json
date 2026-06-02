@@ -70,6 +70,11 @@
     "num_ctx": 16384,
     "timeout_seconds": 600
   },
+  "delivery": {
+    "enabled": true,
+    "onedrive": { "enabled": true, "subfolder": "Market Gap Briefs" },
+    "desktop": { "enabled": false, "filename": "Market Gap Brief (latest).md" }
+  },
   "web_search": {
     "enabled": true,
     "top_sectors": 3,
