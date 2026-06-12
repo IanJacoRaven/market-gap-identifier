@@ -15,14 +15,43 @@ def _fmt_pct(v: float | None) -> str:
     return f"{sign}{v:.1f}%"
 
 
-def _price_row(s: PriceSignal) -> str:
+def _md_table(headers: list[str], rows: list[list[str]], aligns: list[str]) -> list[str]:
+    """Build a Markdown table with cells padded so columns line up as raw text.
+
+    The final column is left un-padded (nothing follows it), which keeps long or
+    emoji-containing trailing cells from throwing the alignment off.
+    """
+    ncol = len(headers)
+    rows = [(r + [""] * ncol)[:ncol] for r in rows]  # normalise row length
+    widths = [len(headers[i]) for i in range(ncol)]
+    for r in rows:
+        for i in range(ncol):
+            widths[i] = max(widths[i], len(r[i]))
+
+    def pad(cell: str, i: int) -> str:
+        if i == ncol - 1:  # don't pad the last column
+            return cell
+        w = widths[i]
+        return cell.rjust(w) if aligns[i] == "r" else cell.ljust(w)
+
+    def row_line(cells: list[str]) -> str:
+        return "| " + " | ".join(pad(c, i) for i, c in enumerate(cells)) + " |"
+
+    sep: list[str] = []
+    for i in range(ncol):
+        w = widths[i] if i < ncol - 1 else max(3, len(headers[i]))
+        sep.append(("-" * max(1, w - 1) + ":") if aligns[i] == "r" else ("-" * max(1, w)))
+
+    return [row_line(headers), "| " + " | ".join(sep) + " |", *[row_line(r) for r in rows]]
+
+
+def _price_cells(s: PriceSignal) -> list[str]:
+    name = f"{s.name} ({s.symbol})"
     if not s.available:
-        return f"| {s.name} (`{s.symbol}`) | — | — | — | — | _{s.error or 'unavailable'}_ |"
+        return [name, "—", "—", "—", "—", f"_{s.error or 'unavailable'}_"]
+    z = f"{s.zscore:.2f}" if s.zscore is not None else "n/a"
     spike = "🔥" if (s.zscore is not None and s.zscore >= 1.5) else ""
-    return (
-        f"| {s.name} (`{s.symbol}`) | {s.last_close} | {_fmt_pct(s.pct_change_5d)} "
-        f"| {_fmt_pct(s.pct_change_20d)} | {s.zscore if s.zscore is not None else 'n/a'} {spike} |  |"
-    )
+    return [name, f"{s.last_close}", _fmt_pct(s.pct_change_5d), _fmt_pct(s.pct_change_20d), z, spike]
 
 
 def _score_label(score: float) -> str:
@@ -52,12 +81,17 @@ def render(
     # --- Top candidates table ---
     lines.append("## Ranked gap candidates")
     lines.append("")
-    lines.append("| # | Sector | Score | Signal | Why |")
-    lines.append("|---|--------|------:|--------|-----|")
-    for i, s in enumerate(ranked, 1):
-        lines.append(
-            f"| {i} | **{s.sector}** | {s.score:.1f} | {_score_label(s.score)} | {s.rationale} |"
+    rank_rows = [
+        [str(i), s.sector, f"{s.score:.1f}", _score_label(s.score), s.rationale]
+        for i, s in enumerate(ranked, 1)
+    ]
+    lines.extend(
+        _md_table(
+            ["#", "Sector", "Score", "Signal", "Why"],
+            rank_rows,
+            ["r", "l", "r", "l", "l"],
         )
+    )
     lines.append("")
     lines.append(
         "_Score 0–100 = blend of input-price momentum (40%), recent disruption "
@@ -86,10 +120,13 @@ def render(
 
         # price table
         if s.price_signals:
-            lines.append("| Input | Last | 5d | 20d | z-score |  |")
-            lines.append("|-------|-----:|---:|----:|--------:|--|")
-            for ps in s.price_signals:
-                lines.append(_price_row(ps))
+            lines.extend(
+                _md_table(
+                    ["Input", "Last", "5d", "20d", "z-score", "Spike"],
+                    [_price_cells(ps) for ps in s.price_signals],
+                    ["l", "r", "r", "r", "r", "l"],
+                )
+            )
             lines.append("")
 
         # headlines
